@@ -164,3 +164,102 @@ Esta é a mesma estrutura de um bom *issue* e de um bom *postmortem*.
 Permitido e incentivado. Em contrapartida, você deve ser capaz de explicar
 qualquer linha entregue: a arguição final pergunta o *porquê* das decisões, não
 a sintaxe.
+
+---
+
+## Pipeline DevSecOps
+
+A pipeline DevSecOps automatiza verificações de qualidade e segurança antes
+da publicação da imagem Docker. O workflow está definido em
+`.github/workflows/devsecops.yml`.
+
+### Etapas da pipeline
+
+| Etapa | Ferramenta | Objetivo |
+|---|---|---|
+| Detecção de segredos | Gitleaks | Identificar possíveis credenciais e segredos expostos no repositório. |
+| Lint | Ruff | Verificar problemas de estilo e qualidade do código Python. |
+| Testes automatizados | pytest | Executar os testes e gerar relatório de cobertura. |
+| Análise estática | SonarCloud | Avaliar o código e verificar o Quality Gate. |
+| Análise de dependências | Trivy | Identificar vulnerabilidades nas dependências do projeto. |
+| Análise da imagem | Trivy | Examinar vulnerabilidades nos componentes da imagem Docker. |
+| Inventário de componentes | Syft | Gerar o SBOM no formato SPDX JSON. |
+
+O workflow é executado em Pull Requests destinados à branch `main`, em
+pushes para `main` e por acionamento manual.
+
+### Critérios de segurança
+
+O Gitleaks verifica a presença de segredos. Os testes automatizados e o Ruff
+validam aspectos de qualidade do código, enquanto o SonarCloud realiza a
+análise estática e aplica o Quality Gate.
+
+O Trivy gera relatórios informativos para vulnerabilidades LOW, MEDIUM, HIGH
+e CRITICAL. As verificações bloqueantes consideram vulnerabilidades HIGH e
+CRITICAL com correção disponível, utilizando `ignore-unfixed: true`.
+
+Os relatórios são preservados como artefatos da execução, inclusive quando
+as verificações bloqueantes falham, permitindo analisar os resultados.
+
+### SBOM e relatórios
+
+O Syft gera um inventário de componentes de software da imagem Docker no
+formato SPDX JSON. O workflow disponibiliza o SBOM e os relatórios como
+artefatos do GitHub Actions.
+
+Para consultar ou baixar os resultados:
+
+1. Abra a aba **Actions** do repositório.
+2. Selecione a execução desejada da **Pipeline DevSecOps**.
+3. Na seção **Artifacts**, baixe o SBOM ou os relatórios.
+4. Extraia os arquivos e consulte os resultados das verificações.
+
+O SBOM facilita a identificação dos componentes presentes na imagem e
+auxilia futuras auditorias de dependências.
+
+### Publicação da imagem Docker
+
+A publicação é realizada em um job separado, que depende da conclusão
+bem-sucedida das verificações de segurança.
+
+O job de publicação só é executado em eventos de `push` para a branch `main`.
+Execuções de Pull Requests não publicam a imagem no GitHub Container Registry
+(GHCR).
+
+Essa condição evita que imagens provenientes de alterações ainda não
+integradas à branch principal sejam publicadas pelo workflow.
+
+### Validação do bloqueio de vulnerabilidades
+
+Foi realizado um teste controlado na branch `teste-vulnerabilidade`, por meio
+do [PR de teste #7](https://github.com/viniciushabib90/ufla-devops-shop/pull/7).
+
+Inicialmente, foi adicionada temporariamente a dependência
+`urllib3==1.26.4` ao arquivo `requirements.txt`. A pipeline identificou
+vulnerabilidades bloqueantes, e as verificações do Trivy falharam tanto na
+análise de dependências quanto na análise da imagem Docker.
+
+Em seguida, a dependência de teste foi removida. Após o envio da correção,
+o job de segurança foi concluído com sucesso.
+
+O teste demonstrou o comportamento esperado de bloqueio e recuperação da
+pipeline. O PR de teste deve permanecer separado da implementação principal
+e não deve ser integrado à branch `main`.
+
+### Evidências da implementação
+
+A implementação principal está registrada no
+[PR #6 — Implementa pipeline DevSecOps com GitHub Actions](https://github.com/viniciushabib90/ufla-devops-shop/pull/6).
+
+As evidências de validação incluem:
+
+- Execução aprovada da pipeline DevSecOps.
+- Quality Gate aprovado no SonarCloud.
+- Execução bloqueada durante o teste de dependência vulnerável.
+- Execução aprovada após a remoção da dependência de teste.
+- Artefatos do SBOM SPDX e relatórios do Trivy.
+
+Os resultados devem ser interpretados com base nos logs e relatórios das
+execuções correspondentes. A aprovação da pipeline indica que as verificações
+configuradas passaram; não representa garantia de ausência de todas as
+vulnerabilidades possíveis.
